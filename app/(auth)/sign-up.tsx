@@ -12,16 +12,62 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { type Href, router } from "expo-router";
+import { useSignUp, useSSO } from "@clerk/expo";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 import { images } from "@/constants/images";
 import SocialButton from "@/components/SocialButton";
 import VerificationModal from "@/components/VerificationModal";
 
+WebBrowser.maybeCompleteAuthSession();
+
+type SSOStrategy = "oauth_google" | "oauth_facebook" | "oauth_apple";
+
 export default function SignUpScreen() {
+  const { signUp, errors, fetchStatus } = useSignUp();
+  const { startSSOFlow } = useSSO();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
+
+  const isLoading = fetchStatus === "fetching";
+
+  const handleSignUp = async () => {
+    const { error } = await signUp.password({ emailAddress: email, password });
+    if (error) return;
+    await signUp.verifications.sendEmailCode();
+    setShowVerification(true);
+  };
+
+  const handleVerify = async (code: string) => {
+    const { error } = await signUp.verifications.verifyEmailCode({ code });
+    if (error) return;
+    if (signUp.status === "complete") {
+      await signUp.finalize({
+        navigate: ({ decorateUrl }) => {
+          router.replace(decorateUrl("/") as Href);
+        },
+      });
+    }
+  };
+
+  const handleResend = async () => {
+    await signUp.verifications.sendEmailCode();
+  };
+
+  const handleSSO = async (strategy: SSOStrategy) => {
+    const { createdSessionId, setActive } = await startSSOFlow({
+      strategy,
+      redirectUrl: Linking.createURL("/"),
+    });
+    if (createdSessionId && setActive) {
+      await setActive({ session: createdSessionId });
+      router.replace("/");
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
@@ -71,6 +117,11 @@ export default function SignUpScreen() {
                 style={styles.input}
               />
             </View>
+            {errors.fields.emailAddress ? (
+              <Text className="body-sm text-error -mt-2 mb-2">
+                {errors.fields.emailAddress.message}
+              </Text>
+            ) : null}
 
             {/* Password */}
             <View style={[styles.inputContainer, { flexDirection: "column" }]}>
@@ -96,15 +147,27 @@ export default function SignUpScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            {errors.fields.password ? (
+              <Text className="body-sm text-error -mt-2 mb-2">
+                {errors.fields.password.message}
+              </Text>
+            ) : null}
+            {errors.global?.[0] ? (
+              <Text className="body-sm text-error mb-2">
+                {errors.global[0].message}
+              </Text>
+            ) : null}
 
             {/* Sign Up button */}
             <TouchableOpacity
               className="bg-lingua-purple rounded-2xl py-4 items-center mt-2"
               activeOpacity={0.85}
-              onPress={() => setShowVerification(true)}
+              onPress={handleSignUp}
+              disabled={!email || !password || isLoading}
+              style={{ opacity: !email || !password || isLoading ? 0.6 : 1 }}
             >
               <Text className="font-poppins-semibold text-base text-white">
-                Sign Up
+                {isLoading ? "Creating account..." : "Sign Up"}
               </Text>
             </TouchableOpacity>
 
@@ -121,14 +184,17 @@ export default function SignUpScreen() {
             <SocialButton
               icon={<AntDesign name="google" size={20} color="#DB4437" />}
               label="Continue with Google"
+              onPress={() => handleSSO("oauth_google")}
             />
             <SocialButton
               icon={<FontAwesome name="facebook" size={20} color="#1877F2" />}
               label="Continue with Facebook"
+              onPress={() => handleSSO("oauth_facebook")}
             />
             <SocialButton
-              icon={<AntDesign name="apple1" size={20} color="#000" />}
+              icon={<AntDesign name="apple" size={20} color="#000" />}
               label="Continue with Apple"
+              onPress={() => handleSSO("oauth_apple")}
             />
 
             {/* Sign In link */}
@@ -144,6 +210,9 @@ export default function SignUpScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Required for Clerk bot-protection */}
+            <View nativeID="clerk-captcha" />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -152,6 +221,11 @@ export default function SignUpScreen() {
         visible={showVerification}
         email={email}
         onClose={() => setShowVerification(false)}
+        onVerify={handleVerify}
+        onResend={handleResend}
+        error={
+          errors.fields.code?.message || errors.global?.[0]?.message || ""
+        }
       />
     </SafeAreaView>
   );

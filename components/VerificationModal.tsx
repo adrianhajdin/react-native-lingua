@@ -10,36 +10,59 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 interface Props {
   visible: boolean;
   email: string;
   onClose: () => void;
+  onVerify: (code: string) => Promise<void>;
+  onResend: () => Promise<void>;
+  error?: string;
 }
 
-export default function VerificationModal({ visible, email, onClose }: Props) {
+export default function VerificationModal({
+  visible,
+  email,
+  onClose,
+  onVerify,
+  onResend,
+  error,
+}: Props) {
   const [code, setCode] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
       setCode("");
+      setIsSubmitting(false);
       const timer = setTimeout(() => inputRef.current?.focus(), 300);
       return () => clearTimeout(timer);
     }
   }, [visible]);
 
-  const handleCodeChange = (text: string) => {
+  // Reset code and loading state when parent reports an error
+  useEffect(() => {
+    if (error) {
+      setCode("");
+      setIsSubmitting(false);
+    }
+  }, [error]);
+
+  const handleCodeChange = async (text: string) => {
     const digits = text.replace(/[^0-9]/g, "").slice(0, 6);
     setCode(digits);
-    if (digits.length === 6) {
-      setTimeout(() => {
-        onClose();
-        router.replace("/");
-      }, 300);
+    if (digits.length === 6 && !isSubmitting) {
+      setIsSubmitting(true);
+      await onVerify(digits);
     }
+  };
+
+  const handleResend = async () => {
+    setCode("");
+    await onResend();
+    setTimeout(() => inputRef.current?.focus(), 300);
   };
 
   return (
@@ -100,9 +123,13 @@ export default function VerificationModal({ visible, email, onClose }: Props) {
             keyboardType="number-pad"
             maxLength={6}
             style={styles.hiddenInput}
+            editable={!isSubmitting}
           />
 
-          <TouchableOpacity style={styles.resendBtn}>
+          {/* Error message */}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <TouchableOpacity style={styles.resendBtn} onPress={handleResend}>
             <Text style={styles.resendText}>
               Didn't receive it?{" "}
               <Text style={styles.resendLink}>Resend</Text>
@@ -156,7 +183,7 @@ const styles = StyleSheet.create({
   boxesRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   box: {
     width: 48,
@@ -189,8 +216,16 @@ const styles = StyleSheet.create({
     width: 1,
     height: 1,
   },
+  errorText: {
+    fontFamily: "Poppins-Regular",
+    fontSize: 13,
+    color: "#ff4d4f",
+    textAlign: "center",
+    marginBottom: 8,
+  },
   resendBtn: {
     paddingVertical: 4,
+    marginTop: 8,
   },
   resendText: {
     fontFamily: "Poppins-Regular",

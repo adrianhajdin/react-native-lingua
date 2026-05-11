@@ -12,14 +12,59 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { type Href, router } from "expo-router";
+import { useSignIn, useSSO } from "@clerk/expo";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 import { images } from "@/constants/images";
 import SocialButton from "@/components/SocialButton";
 import VerificationModal from "@/components/VerificationModal";
 
+WebBrowser.maybeCompleteAuthSession();
+
+type SSOStrategy = "oauth_google" | "oauth_facebook" | "oauth_apple";
+
 export default function SignInScreen() {
+  const { signIn, errors, fetchStatus } = useSignIn();
+  const { startSSOFlow } = useSSO();
+
   const [email, setEmail] = useState("");
   const [showVerification, setShowVerification] = useState(false);
+
+  const isLoading = fetchStatus === "fetching";
+
+  const handleSignIn = async () => {
+    const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
+    if (error) return;
+    setShowVerification(true);
+  };
+
+  const handleVerify = async (code: string) => {
+    const { error } = await signIn.emailCode.verifyCode({ code });
+    if (error) return;
+    if (signIn.status === "complete") {
+      await signIn.finalize({
+        navigate: ({ decorateUrl }) => {
+          router.replace(decorateUrl("/") as Href);
+        },
+      });
+    }
+  };
+
+  const handleResend = async () => {
+    await signIn.emailCode.sendCode({ emailAddress: email });
+  };
+
+  const handleSSO = async (strategy: SSOStrategy) => {
+    const { createdSessionId, setActive } = await startSSOFlow({
+      strategy,
+      redirectUrl: Linking.createURL("/"),
+    });
+    if (createdSessionId && setActive) {
+      await setActive({ session: createdSessionId });
+      router.replace("/");
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
@@ -69,15 +114,27 @@ export default function SignInScreen() {
                 style={styles.input}
               />
             </View>
+            {errors.fields.identifier ? (
+              <Text className="body-sm text-error -mt-2 mb-2">
+                {errors.fields.identifier.message}
+              </Text>
+            ) : null}
+            {errors.global?.[0] ? (
+              <Text className="body-sm text-error mb-2">
+                {errors.global[0].message}
+              </Text>
+            ) : null}
 
             {/* Sign In button */}
             <TouchableOpacity
               className="bg-lingua-purple rounded-2xl py-4 items-center mt-2"
               activeOpacity={0.85}
-              onPress={() => setShowVerification(true)}
+              onPress={handleSignIn}
+              disabled={!email || isLoading}
+              style={{ opacity: !email || isLoading ? 0.6 : 1 }}
             >
               <Text className="font-poppins-semibold text-base text-white">
-                Sign In
+                {isLoading ? "Sending code..." : "Sign In"}
               </Text>
             </TouchableOpacity>
 
@@ -94,14 +151,17 @@ export default function SignInScreen() {
             <SocialButton
               icon={<AntDesign name="google" size={20} color="#DB4437" />}
               label="Continue with Google"
+              onPress={() => handleSSO("oauth_google")}
             />
             <SocialButton
               icon={<FontAwesome name="facebook" size={20} color="#1877F2" />}
               label="Continue with Facebook"
+              onPress={() => handleSSO("oauth_facebook")}
             />
             <SocialButton
-              icon={<AntDesign name="apple1" size={20} color="#000" />}
+              icon={<AntDesign name="apple" size={20} color="#000" />}
               label="Continue with Apple"
+              onPress={() => handleSSO("oauth_apple")}
             />
 
             {/* Sign Up link */}
@@ -125,6 +185,11 @@ export default function SignInScreen() {
         visible={showVerification}
         email={email}
         onClose={() => setShowVerification(false)}
+        onVerify={handleVerify}
+        onResend={handleResend}
+        error={
+          errors.fields.code?.message || errors.global?.[0]?.message || ""
+        }
       />
     </SafeAreaView>
   );
