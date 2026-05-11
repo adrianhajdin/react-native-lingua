@@ -1,5 +1,5 @@
 import { useAuth, useClerk } from "@clerk/expo";
-import { Redirect } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 export default function Index() {
@@ -24,9 +24,18 @@ export default function Index() {
       <TouchableOpacity
         className="bg-lingua-purple rounded-2xl px-6 py-3"
         activeOpacity={0.85}
-        onPress={() => signOut()}
+        onPress={() => router.push("/language-select")}
       >
         <Text className="font-poppins-semibold text-base text-white">
+          Choose a Language
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        className="px-6 py-3"
+        activeOpacity={0.7}
+        onPress={() => signOut()}
+      >
+        <Text className="font-poppins-medium text-sm text-text-secondary">
           Sign Out
         </Text>
       </TouchableOpacity>
