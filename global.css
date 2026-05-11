@@ -1,0 +1,117 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+@theme {
+  /* ==============================
+     PRIMARY COLORS
+  ============================== */
+  --color-lingua-purple: #6c4ef5;
+  --color-lingua-deep-purple: #5b3bf6;
+  --color-lingua-blue: #4d88ff;
+  --color-lingua-green: #21c16b;
+
+  /* ==============================
+     SEMANTIC COLORS
+  ============================== */
+  --color-success: #21c16b;
+  --color-warning: #ffcb00;
+  --color-streak: #ff8a00;
+  --color-error: #ff4d4f;
+  --color-info: #4d88ff;
+
+  /* ==============================
+     NEUTRAL COLORS
+  ============================== */
+  --color-text-primary: #001328;
+  --color-text-secondary: #6b7280;
+  --color-border: #e5e7eb;
+  --color-surface: #f6f7fb;
+  --color-background: #ffffff;
+
+  /* ==============================
+     FONT FAMILIES
+  ============================== */
+  --font-poppins: "Poppins-Regular";
+  --font-poppins-medium: "Poppins-Medium";
+  --font-poppins-semibold: "Poppins-SemiBold";
+  --font-poppins-bold: "Poppins-Bold";
+}
+
+/* ==============================
+   TYPOGRAPHY UTILITIES (BEM)
+============================== */
+
+/* h1 — Page / Screen Title: 32px · Bold · 1.2 */
+@utility h1 {
+  font-family: "Poppins-Bold";
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 38px;
+  color: #001328;
+}
+
+/* h2 — Section Title: 24px · SemiBold · 1.3 */
+@utility h2 {
+  font-family: "Poppins-SemiBold";
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 31px;
+  color: #001328;
+}
+
+/* h3 — Card / Module Title: 20px · SemiBold · 1.3 */
+@utility h3 {
+  font-family: "Poppins-SemiBold";
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
+  color: #001328;
+}
+
+/* h4 — Subheading: 16px · Medium · 1.4 */
+@utility h4 {
+  font-family: "Poppins-Medium";
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 22px;
+  color: #001328;
+}
+
+/* body-lg — Important content: 16px · Regular · 1.6 */
+@utility body-lg {
+  font-family: "Poppins-Regular";
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 26px;
+  color: #001328;
+}
+
+/* body-md — Body text: 14px · Regular · 1.6 */
+@utility body-md {
+  font-family: "Poppins-Regular";
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: #001328;
+}
+
+/* body-sm — Supporting text: 13px · Regular · 1.6 */
+@utility body-sm {
+  font-family: "Poppins-Regular";
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 21px;
+  color: #001328;
+}
+
+/* caption — Labels, meta text: 11px · Regular · 1.4 */
+@utility caption {
+  font-family: "Poppins-Regular";
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  color: #6b7280;
+}
