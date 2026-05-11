@@ -7,6 +7,42 @@
       "skillPath": "plugins/expo/skills/building-native-ui/SKILL.md",
       "computedHash": "342df93f481a0dba919f372d6c7b40d2b4bf5b51dd24363aea2e5d0bae27a6fa"
     },
+    "clerk": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/core/clerk/SKILL.md",
+      "computedHash": "904255abae6e7e5f81d3710db0e3ce23ec5420f14923723d11d626d2755b06a1"
+    },
+    "clerk-backend-api": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/core/clerk-backend-api/SKILL.md",
+      "computedHash": "723ee35b2727923bbc9050c103369985d3d2ced00c9d25d79ff6383a23d8fea9"
+    },
+    "clerk-custom-ui": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/core/clerk-custom-ui/SKILL.md",
+      "computedHash": "72dcda42d3755a468049e828180b66c25fb2ac66fd99bd1514699404445924c6"
+    },
+    "clerk-expo-patterns": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frameworks/clerk-expo-patterns/SKILL.md",
+      "computedHash": "ef550f902d44c3292db0578409aed0729075ea559ed77bb98b294c8c7114599a"
+    },
+    "clerk-setup": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/core/clerk-setup/SKILL.md",
+      "computedHash": "a35fe4e4d03a71825d9880c9cd76ddcae536beed535a2be44908117b4661e749"
+    },
+    "clerk-webhooks": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/features/clerk-webhooks/SKILL.md",
+      "computedHash": "de12deda380be19d32d62c4106a6b78736cd4d9cc6dd5b214f6039853ad89e54"
+    },
     "eas-update-insights": {
       "source": "expo/skills",
       "sourceType": "github",

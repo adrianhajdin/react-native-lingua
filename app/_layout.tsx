@@ -1,9 +1,17 @@
 import "../global.css";
 
+import { ClerkProvider } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
 import { useEffect } from "react";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { Stack } from "expo-router";
+
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+
+if (!publishableKey) {
+  throw new Error("Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to your .env file");
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,9 +34,12 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="onboarding" />
-    </Stack>
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="(auth)" />
+      </Stack>
+    </ClerkProvider>
   );
 }
