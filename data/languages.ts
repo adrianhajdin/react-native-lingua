@@ -25,14 +25,14 @@ export const LANGUAGES: Language[] = [
     color: "#FF3B30",
     learners: "12.7M",
   },
-  {
-    code: "ko",
-    name: "Korean",
-    nativeName: "한국어",
-    flag: "https://flagcdn.com/w320/kr.png",
-    color: "#4D88FF",
-    learners: "9.3M",
-  },
+  // {
+  //   code: "ko",
+  //   name: "Korean",
+  //   nativeName: "한국어",
+  //   flag: "https://flagcdn.com/w320/kr.png",
+  //   color: "#4D88FF",
+  //   learners: "9.3M",
+  // },
   {
     code: "de",
     name: "German",
@@ -41,12 +41,12 @@ export const LANGUAGES: Language[] = [
     color: "#FFCC00",
     learners: "8.1M",
   },
-  {
-    code: "zh",
-    name: "Chinese",
-    nativeName: "中文",
-    flag: "https://flagcdn.com/w320/cn.png",
-    color: "#FF3B30",
-    learners: "7.4M",
-  },
+  // {
+  //   code: "zh",
+  //   name: "Chinese",
+  //   nativeName: "中文",
+  //   flag: "https://flagcdn.com/w320/cn.png",
+  //   color: "#FF3B30",
+  //   learners: "7.4M",
+  // },
 ];
