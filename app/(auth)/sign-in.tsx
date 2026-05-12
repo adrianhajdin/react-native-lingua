@@ -1,3 +1,12 @@
+import SocialButton from "@/components/SocialButton";
+import VerificationModal from "@/components/VerificationModal";
+import { images } from "@/constants/images";
+import { posthog } from "@/lib/posthog";
+import { useSignIn, useSSO } from "@clerk/expo";
+import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
+import { type Href, router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
   Image,
@@ -11,14 +20,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { type Href, router } from "expo-router";
-import { useSignIn, useSSO } from "@clerk/expo";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
-import { images } from "@/constants/images";
-import SocialButton from "@/components/SocialButton";
-import VerificationModal from "@/components/VerificationModal";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -30,19 +31,64 @@ export default function SignInScreen() {
 
   const [email, setEmail] = useState("");
   const [showVerification, setShowVerification] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   const isLoading = fetchStatus === "fetching";
 
   const handleSignIn = async () => {
+    setAuthError("");
+    posthog.capture("sign_in_submitted", { method: "code" });
+    const { error: createError } = await signIn.create({ identifier: email });
+    if (createError) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: createError.name ?? "SignInCreateError",
+            value: createError.message,
+          },
+        ],
+        $exception_source: "sign-in-create",
+      });
+      setAuthError("We couldn't start sign in. Please try again.");
+      return;
+    }
+
     const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
-    if (error) return;
+    if (error) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: error.name ?? "SignInError",
+            value: error.message,
+          },
+        ],
+        $exception_source: "sign-in",
+      });
+      setAuthError("We couldn't send your code. Please try again.");
+      return;
+    }
     setShowVerification(true);
   };
 
   const handleVerify = async (code: string) => {
     const { error } = await signIn.emailCode.verifyCode({ code });
-    if (error) return;
+    if (error) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: error.name ?? "VerificationError",
+            value: error.message,
+          },
+        ],
+        $exception_source: "sign-in-verification",
+      });
+      return;
+    }
     if (signIn.status === "complete") {
+      posthog.capture("sign_in_completed", { method: "code" });
+      if (signIn.createdUserId) {
+        posthog.identify(signIn.createdUserId);
+      }
       await signIn.finalize({
         navigate: ({ decorateUrl }) => {
           router.replace(decorateUrl("/") as Href);
@@ -56,13 +102,27 @@ export default function SignInScreen() {
   };
 
   const handleSSO = async (strategy: SSOStrategy) => {
-    const { createdSessionId, setActive } = await startSSOFlow({
-      strategy,
-      redirectUrl: Linking.createURL("/"),
-    });
-    if (createdSessionId && setActive) {
-      await setActive({ session: createdSessionId });
-      router.replace("/");
+    posthog.capture("sign_in_sso_started", { strategy });
+    setAuthError("");
+    try {
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy,
+        redirectUrl: Linking.createURL("/"),
+      });
+      if (createdSessionId && setActive) {
+        posthog.capture("sign_in_completed", { method: strategy });
+        await setActive({ session: createdSessionId });
+        router.replace("/");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unknown SSO sign-in error";
+      console.error("SSO sign-in failed", err);
+      posthog.capture("sign_in_sso_failed", {
+        strategy,
+        error: message,
+      });
+      setAuthError("Couldn't continue with social sign in. Please try again.");
     }
   };
 
@@ -124,6 +184,9 @@ export default function SignInScreen() {
                 {errors.global[0].message}
               </Text>
             ) : null}
+            {authError ? (
+              <Text className="body-sm text-error mb-2">{authError}</Text>
+            ) : null}
 
             {/* Sign In button */}
             <TouchableOpacity
@@ -132,6 +195,7 @@ export default function SignInScreen() {
               onPress={handleSignIn}
               disabled={!email || isLoading}
               style={{ opacity: !email || isLoading ? 0.6 : 1 }}
+              testID="sign-in-button"
             >
               <Text className="font-poppins-semibold text-base text-white">
                 {isLoading ? "Sending code..." : "Sign In"}
@@ -167,7 +231,7 @@ export default function SignInScreen() {
             {/* Sign Up link */}
             <View className="flex-row justify-center mt-4 mb-8">
               <Text className="body-md text-text-secondary">
-                Don't have an account?{" "}
+                {"Don't have an account? "}
               </Text>
               <TouchableOpacity
                 onPress={() => router.replace("/(auth)/sign-up")}
@@ -187,9 +251,7 @@ export default function SignInScreen() {
         onClose={() => setShowVerification(false)}
         onVerify={handleVerify}
         onResend={handleResend}
-        error={
-          errors.fields.code?.message || errors.global?.[0]?.message || ""
-        }
+        error={errors.fields.code?.message || errors.global?.[0]?.message || ""}
       />
     </SafeAreaView>
   );

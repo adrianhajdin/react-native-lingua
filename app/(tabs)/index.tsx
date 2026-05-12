@@ -1,4 +1,4 @@
-import { useUser } from "@clerk/expo";
+import { useAuth, useUser } from "@clerk/expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Image,
@@ -14,6 +14,7 @@ import { images } from "@/constants/images";
 import { colors } from "@/constants/theme";
 import { LANGUAGES } from "@/data/languages";
 import { UNITS } from "@/data/units";
+import { posthog } from "@/lib/posthog";
 import { useLanguageStore } from "@/store/languageStore";
 import { useLearningStore } from "@/store/learningStore";
 import { LanguageCode } from "@/types/learning";
@@ -65,6 +66,7 @@ const PLAN_ITEMS = [
 
 export default function HomeScreen() {
   const { user } = useUser();
+  const { signOut } = useAuth();
   const { selectedLanguage } = useLanguageStore();
   const { xpToday, dailyGoal, streak } = useLearningStore();
 
@@ -109,6 +111,13 @@ export default function HomeScreen() {
             <TouchableOpacity activeOpacity={0.7}>
               <Ionicons
                 name="notifications-outline"
+                size={24}
+                color={colors.neutral.textPrimary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => signOut()}>
+              <Ionicons
+                name="log-out-outline"
                 size={24}
                 color={colors.neutral.textPrimary}
               />
@@ -161,6 +170,15 @@ export default function HomeScreen() {
             <TouchableOpacity
               className="bg-white rounded-xl py-2 px-[22px] self-start"
               activeOpacity={0.85}
+              testID="continue-learning-button"
+              onPress={() => {
+                posthog.capture("continue_learning_tapped", {
+                  language_code: selectedLanguage,
+                  unit_order: unit?.order ?? 1,
+                  xp_today: xpToday,
+                  streak,
+                });
+              }}
             >
               <Text className="font-poppins-semibold text-[13px] text-lingua-purple">
                 Continue
@@ -177,7 +195,7 @@ export default function HomeScreen() {
         {/* ── Today's Plan Header ── */}
         <View className="flex-row items-center justify-between mb-3">
           <Text className="font-poppins-semibold text-[17px] text-text-primary">
-            Today's plan
+            {"Today's plan"}
           </Text>
           <TouchableOpacity activeOpacity={0.7}>
             <Text className="font-poppins-medium text-[13px] text-lingua-blue">

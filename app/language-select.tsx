@@ -1,5 +1,6 @@
 import { images } from "@/constants/images";
 import { LANGUAGES } from "@/data/languages";
+import { posthog } from "@/lib/posthog";
 import { useLanguageStore } from "@/store/languageStore";
 import { Language, LanguageCode } from "@/types/learning";
 import { Ionicons } from "@expo/vector-icons";
@@ -104,7 +105,11 @@ export default function LanguageSelectScreen() {
         <TouchableOpacity
           className="bg-lingua-purple rounded-2xl items-center py-4"
           activeOpacity={0.85}
+          testID="language-confirm-button"
           onPress={() => {
+            posthog.capture("language_selected", {
+              language_code: selectedCode,
+            });
             setSelectedLanguage(selectedCode as LanguageCode);
             router.replace("/");
           }}
