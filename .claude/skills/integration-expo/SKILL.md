@@ -39,15 +39,23 @@ The example project shows the target implementation pattern. Consult the documen
 
 ## Framework guidelines
 
-- posthog-react-native is the React Native SDK package name (same as bare RN)
-- Use expo-constants with app.config.js extras for POSTHOG_PROJECT_TOKEN and POSTHOG_HOST (NOT react-native-config)
-- Access config via `Constants.expoConfig?.extra?.posthogProjectToken` in your posthog.ts config file
-- For expo-router, wrap PostHogProvider in app/_layout.tsx and manually track screens with `posthog.screen(pathname, params)` in a useEffect
-- posthog-react-native is the React Native SDK package name
-- Use react-native-config to load POSTHOG_PROJECT_TOKEN and POSTHOG_HOST from .env (variables are embedded at build time, not runtime)
-- react-native-svg is a required peer dependency of posthog-react-native (used by the surveys feature) and must be installed alongside it
-- Place PostHogProvider INSIDE NavigationContainer for React Navigation v7 compatibility
-- When a reverse proxy is configured, both /static/* AND /array/* must route to the assets origin (us-assets.i.posthog.com or eu-assets.i.posthog.com).
+### Expo (this project)
+
+- Use `posthog-react-native` as the SDK package name.
+- `react-native-svg` is a required peer dependency of `posthog-react-native` (used by surveys) and must be installed alongside it.
+- Use `expo-constants` with `app.config.js` extras for `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` (not `react-native-config` or direct `.env` reads in app code).
+- Access config via `Constants.expoConfig?.extra?.posthogProjectToken` in your `posthog.ts` config file.
+- For expo-router, wrap PostHogProvider in `app/_layout.tsx` and manually track screens with `posthog.screen(pathname, params)` in a useEffect.
+
+### Bare React Native only
+
+- Use `posthog-react-native` as the SDK package name.
+- `react-native-svg` is a required peer dependency of `posthog-react-native` (used by surveys) and must be installed alongside it.
+- Use `react-native-config` to load `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` from `.env` (embedded at build time, not runtime).
+- `react-native-config` and `.env` loading guidance applies to bare React Native only, not Expo managed apps.
+- Place PostHogProvider INSIDE NavigationContainer for React Navigation v7 compatibility.
+
+- When a reverse proxy is configured, both /static/_ AND /array/_ must route to the assets origin (us-assets.i.posthog.com or eu-assets.i.posthog.com).
 
 ## Identifying users
 

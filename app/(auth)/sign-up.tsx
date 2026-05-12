@@ -1,3 +1,12 @@
+import SocialButton from "@/components/SocialButton";
+import VerificationModal from "@/components/VerificationModal";
+import { images } from "@/constants/images";
+import { posthog } from "@/lib/posthog";
+import { useSignUp, useSSO } from "@clerk/expo";
+import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
+import { type Href, router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
   Image,
@@ -11,15 +20,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { type Href, router } from "expo-router";
-import { useSignUp, useSSO } from "@clerk/expo";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
-import { images } from "@/constants/images";
-import { posthog } from "@/lib/posthog";
-import SocialButton from "@/components/SocialButton";
-import VerificationModal from "@/components/VerificationModal";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -33,10 +33,12 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   const isLoading = fetchStatus === "fetching";
 
   const handleSignUp = async () => {
+    setAuthError("");
     posthog.capture("sign_up_submitted", { method: "password" });
     const { error } = await signUp.password({ emailAddress: email, password });
     if (error) {
@@ -49,10 +51,28 @@ export default function SignUpScreen() {
         ],
         $exception_source: "sign-up",
       });
+      setAuthError("We couldn't create your account. Please try again.");
       return;
     }
-    await signUp.verifications.sendEmailCode();
-    setShowVerification(true);
+    try {
+      await signUp.verifications.sendEmailCode();
+      setShowVerification(true);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Email code send failed";
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: err instanceof Error ? err.name : "SignUpEmailCodeError",
+            value: message,
+          },
+        ],
+        $exception_source: "sign-up-email-code",
+      });
+      setAuthError(
+        "We couldn't send your verification code. Please try again.",
+      );
+    }
   };
 
   const handleVerify = async (code: string) => {
@@ -90,14 +110,26 @@ export default function SignUpScreen() {
 
   const handleSSO = async (strategy: SSOStrategy) => {
     posthog.capture("sign_up_sso_started", { strategy });
-    const { createdSessionId, setActive } = await startSSOFlow({
-      strategy,
-      redirectUrl: Linking.createURL("/"),
-    });
-    if (createdSessionId && setActive) {
-      posthog.capture("sign_up_completed", { method: strategy });
-      await setActive({ session: createdSessionId });
-      router.replace("/");
+    setAuthError("");
+    try {
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy,
+        redirectUrl: Linking.createURL("/"),
+      });
+      if (createdSessionId && setActive) {
+        posthog.capture("sign_up_completed", { method: strategy });
+        await setActive({ session: createdSessionId });
+        router.replace("/");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unknown SSO sign-up error";
+      console.error("SSO sign-up failed", err);
+      posthog.capture("sign_up_sso_failed", {
+        strategy,
+        error: message,
+      });
+      setAuthError("Couldn't continue with social sign up. Please try again.");
     }
   };
 
@@ -189,6 +221,9 @@ export default function SignUpScreen() {
                 {errors.global[0].message}
               </Text>
             ) : null}
+            {authError ? (
+              <Text className="body-sm text-error mb-2">{authError}</Text>
+            ) : null}
 
             {/* Sign Up button */}
             <TouchableOpacity
@@ -256,9 +291,7 @@ export default function SignUpScreen() {
         onClose={() => setShowVerification(false)}
         onVerify={handleVerify}
         onResend={handleResend}
-        error={
-          errors.fields.code?.message || errors.global?.[0]?.message || ""
-        }
+        error={errors.fields.code?.message || errors.global?.[0]?.message || ""}
       />
     </SafeAreaView>
   );
