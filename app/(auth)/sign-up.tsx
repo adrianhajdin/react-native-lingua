@@ -17,6 +17,7 @@ import { useSignUp, useSSO } from "@clerk/expo";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { images } from "@/constants/images";
+import { posthog } from "@/lib/posthog";
 import SocialButton from "@/components/SocialButton";
 import VerificationModal from "@/components/VerificationModal";
 
@@ -36,16 +37,45 @@ export default function SignUpScreen() {
   const isLoading = fetchStatus === "fetching";
 
   const handleSignUp = async () => {
+    posthog.capture("sign_up_submitted", { method: "password" });
     const { error } = await signUp.password({ emailAddress: email, password });
-    if (error) return;
+    if (error) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: error.name ?? "SignUpError",
+            value: error.message,
+          },
+        ],
+        $exception_source: "sign-up",
+      });
+      return;
+    }
     await signUp.verifications.sendEmailCode();
     setShowVerification(true);
   };
 
   const handleVerify = async (code: string) => {
     const { error } = await signUp.verifications.verifyEmailCode({ code });
-    if (error) return;
+    if (error) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: error.name ?? "VerificationError",
+            value: error.message,
+          },
+        ],
+        $exception_source: "sign-up-verification",
+      });
+      return;
+    }
     if (signUp.status === "complete") {
+      posthog.capture("sign_up_completed", { method: "password" });
+      if (signUp.createdUserId) {
+        posthog.identify(signUp.createdUserId, {
+          $set_once: { sign_up_date: new Date().toISOString() },
+        });
+      }
       await signUp.finalize({
         navigate: ({ decorateUrl }) => {
           router.replace(decorateUrl("/") as Href);
@@ -59,11 +89,13 @@ export default function SignUpScreen() {
   };
 
   const handleSSO = async (strategy: SSOStrategy) => {
+    posthog.capture("sign_up_sso_started", { strategy });
     const { createdSessionId, setActive } = await startSSOFlow({
       strategy,
       redirectUrl: Linking.createURL("/"),
     });
     if (createdSessionId && setActive) {
+      posthog.capture("sign_up_completed", { method: strategy });
       await setActive({ session: createdSessionId });
       router.replace("/");
     }
@@ -165,6 +197,7 @@ export default function SignUpScreen() {
               onPress={handleSignUp}
               disabled={!email || !password || isLoading}
               style={{ opacity: !email || !password || isLoading ? 0.6 : 1 }}
+              testID="sign-up-button"
             >
               <Text className="font-poppins-semibold text-base text-white">
                 {isLoading ? "Creating account..." : "Sign Up"}

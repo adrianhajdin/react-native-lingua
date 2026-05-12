@@ -17,6 +17,7 @@ import { useSignIn, useSSO } from "@clerk/expo";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { images } from "@/constants/images";
+import { posthog } from "@/lib/posthog";
 import SocialButton from "@/components/SocialButton";
 import VerificationModal from "@/components/VerificationModal";
 
@@ -34,15 +35,42 @@ export default function SignInScreen() {
   const isLoading = fetchStatus === "fetching";
 
   const handleSignIn = async () => {
+    posthog.capture("sign_in_submitted", { method: "code" });
     const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
-    if (error) return;
+    if (error) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: error.name ?? "SignInError",
+            value: error.message,
+          },
+        ],
+        $exception_source: "sign-in",
+      });
+      return;
+    }
     setShowVerification(true);
   };
 
   const handleVerify = async (code: string) => {
     const { error } = await signIn.emailCode.verifyCode({ code });
-    if (error) return;
+    if (error) {
+      posthog.capture("$exception", {
+        $exception_list: [
+          {
+            type: error.name ?? "VerificationError",
+            value: error.message,
+          },
+        ],
+        $exception_source: "sign-in-verification",
+      });
+      return;
+    }
     if (signIn.status === "complete") {
+      posthog.capture("sign_in_completed", { method: "code" });
+      if (signIn.createdUserId) {
+        posthog.identify(signIn.createdUserId);
+      }
       await signIn.finalize({
         navigate: ({ decorateUrl }) => {
           router.replace(decorateUrl("/") as Href);
@@ -56,11 +84,13 @@ export default function SignInScreen() {
   };
 
   const handleSSO = async (strategy: SSOStrategy) => {
+    posthog.capture("sign_in_sso_started", { strategy });
     const { createdSessionId, setActive } = await startSSOFlow({
       strategy,
       redirectUrl: Linking.createURL("/"),
     });
     if (createdSessionId && setActive) {
+      posthog.capture("sign_in_completed", { method: strategy });
       await setActive({ session: createdSessionId });
       router.replace("/");
     }
@@ -132,6 +162,7 @@ export default function SignInScreen() {
               onPress={handleSignIn}
               disabled={!email || isLoading}
               style={{ opacity: !email || isLoading ? 0.6 : 1 }}
+              testID="sign-in-button"
             >
               <Text className="font-poppins-semibold text-base text-white">
                 {isLoading ? "Sending code..." : "Sign In"}
@@ -167,7 +198,7 @@ export default function SignInScreen() {
             {/* Sign Up link */}
             <View className="flex-row justify-center mt-4 mb-8">
               <Text className="body-md text-text-secondary">
-                Don't have an account?{" "}
+                {"Don't have an account? "}
               </Text>
               <TouchableOpacity
                 onPress={() => router.replace("/(auth)/sign-up")}
