@@ -1,6 +1,7 @@
 import { images } from "@/constants/images";
 import { LANGUAGES } from "@/data/languages";
-import { Language } from "@/types/learning";
+import { useLanguageStore } from "@/store/languageStore";
+import { Language, LanguageCode } from "@/types/learning";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -16,6 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LanguageSelectScreen() {
+  const { setSelectedLanguage } = useLanguageStore();
   const [selectedCode, setSelectedCode] = useState<string>(LANGUAGES[0].code);
   const [search, setSearch] = useState("");
 
@@ -102,7 +104,10 @@ export default function LanguageSelectScreen() {
         <TouchableOpacity
           className="bg-lingua-purple rounded-2xl items-center py-4"
           activeOpacity={0.85}
-          onPress={() => router.back()}
+          onPress={() => {
+            setSelectedLanguage(selectedCode as LanguageCode);
+            router.replace("/");
+          }}
         >
           <Text className="font-poppins-semibold text-base text-white">
             Continue

@@ -1,10 +1,12 @@
-import { useAuth, useClerk } from "@clerk/expo";
-import { Redirect, router } from "expo-router";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "@clerk/expo";
+import { Redirect } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
+
+import { useLanguageStore } from "@/store/languageStore";
 
 export default function Index() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { signOut } = useClerk();
+  const { selectedLanguage } = useLanguageStore();
 
   if (!isLoaded) {
     return (
@@ -18,27 +20,9 @@ export default function Index() {
     return <Redirect href="/onboarding" />;
   }
 
-  return (
-    <View className="flex-1 justify-center items-center gap-4">
-      <Text className="h2 text-center text-lingua-purple">Lingua</Text>
-      <TouchableOpacity
-        className="bg-lingua-purple rounded-2xl px-6 py-3"
-        activeOpacity={0.85}
-        onPress={() => router.push("/language-select")}
-      >
-        <Text className="font-poppins-semibold text-base text-white">
-          Choose a Language
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        className="px-6 py-3"
-        activeOpacity={0.7}
-        onPress={() => signOut()}
-      >
-        <Text className="font-poppins-medium text-sm text-text-secondary">
-          Sign Out
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+  if (!selectedLanguage) {
+    return <Redirect href="/language-select" />;
+  }
+
+  return <Redirect href="/(tabs)" />;
 }
