@@ -1,21 +1,21 @@
-import {
-  ScrollView,
-  View,
-  Text,
-  Image,
-  TouchableOpacity,
-  StyleSheet,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "@clerk/expo";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useLanguageStore } from "@/store/languageStore";
-import { useLearningStore } from "@/store/learningStore";
-import { LANGUAGES } from "@/data/languages";
-import { UNITS } from "@/data/units";
 import { images } from "@/constants/images";
 import { colors } from "@/constants/theme";
+import { LANGUAGES } from "@/data/languages";
+import { UNITS } from "@/data/units";
+import { useLanguageStore } from "@/store/languageStore";
+import { useLearningStore } from "@/store/learningStore";
 import { LanguageCode } from "@/types/learning";
 
 function getGreeting(langCode: LanguageCode | null): string {
@@ -72,10 +72,13 @@ export default function HomeScreen() {
   const unit = UNITS.find((u) => u.languageCode === selectedLanguage);
   const firstName = user?.firstName ?? "Learner";
   const greeting = getGreeting(selectedLanguage);
-  const xpProgress = Math.min((xpToday / dailyGoal) * 100, 100);
+  const xpProgress =
+    dailyGoal > 0 ? Math.min((xpToday / dailyGoal) * 100, 100) : 0;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.neutral.background }}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.neutral.background }}
+    >
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
