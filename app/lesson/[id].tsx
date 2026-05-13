@@ -1,8 +1,17 @@
+import { useAuth, useUser } from "@clerk/expo";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  Call,
+  StreamCall,
+  StreamVideo,
+  StreamVideoClient,
+  useCallStateHooks,
+} from "@stream-io/video-react-native-sdk";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,132 +22,522 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { images } from "@/constants/images";
 import { colors } from "@/constants/theme";
 import { LESSONS } from "@/data/lessons";
+import { useLanguageStore } from "@/store/languageStore";
+
+type CallStatus = "idle" | "connecting" | "joined" | "error";
+type AgentStatus = "idle" | "connecting" | "connected" | "failed";
 
 export default function LessonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
+  const { selectedLanguage } = useLanguageStore();
 
   const lesson = LESSONS.find((l) => l.id === id);
 
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [subtitlesOn, setSubtitlesOn] = useState(true);
+  const [client, setClient] = useState<StreamVideoClient | null>(null);
+  const [call, setCall] = useState<Call | null>(null);
+  const [callStatus, setCallStatus] = useState<CallStatus>("idle");
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>("idle");
+
+  const callRef = useRef<Call | null>(null);
+  const clientRef = useRef<StreamVideoClient | null>(null);
+  const agentSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded || !user || !lesson) return;
+    startCall();
+
+    return () => {
+      callRef.current?.leave().catch(console.error);
+      clientRef.current?.disconnectUser().catch(console.error);
+      stopAgentSession(callRef.current?.id ?? null, agentSessionRef.current);
+    };
+  }, [isLoaded, user, lesson]);
+
+  async function startCall() {
+    if (!user || !lesson) return;
+    setCallStatus("connecting");
+
+    try {
+      const clerkToken = await getToken();
+      if (!clerkToken) throw new Error("Not authenticated");
+      const res = await fetch("/api/stream-token", {
+        headers: { Authorization: `Bearer ${clerkToken}` },
+      });
+      if (!res.ok) throw new Error("Token fetch failed");
+      const { token, apiKey } = await res.json();
+
+      const streamClient = StreamVideoClient.getOrCreateInstance({
+        apiKey,
+        token,
+        user: {
+          id: user.id,
+          name: user.fullName ?? user.id,
+          image: user.imageUrl || undefined,
+        },
+      });
+
+      const callId = `lesson-${lesson.id}-${user.id}`;
+      const streamCall = streamClient.call("default", callId);
+      await streamCall.join({ create: true });
+
+      // Pack lesson context into Stream call custom data so the agent can read it on join.
+      // Wrapped in try/catch — if the update fails (e.g. server permissions), the lesson
+      // continues and the Python agent falls back to its default prompts.
+      const language = selectedLanguage ?? (lesson.id.split("-")[0] as string);
+      try {
+        await streamCall.update({
+          custom: {
+            lesson_id: lesson.id,
+            lesson_title: lesson.title,
+            language,
+            goals: lesson.goals.map((g) => g.description),
+            vocabulary: lesson.vocabulary.map(
+              (v) => `${v.word}: ${v.translation}`,
+            ),
+            phrases: lesson.phrases.map((p) => p.text),
+            topics: lesson.aiTeacherPrompt.topics,
+            system_prompt: lesson.aiTeacherPrompt.systemPrompt,
+            intro_message: lesson.aiTeacherPrompt.introMessage,
+          },
+        });
+      } catch (updateErr) {
+        console.warn(
+          "[lesson] call.update failed (agent will use default prompts):",
+          updateErr,
+        );
+      }
+
+      callRef.current = streamCall;
+      clientRef.current = streamClient;
+      setClient(streamClient);
+      setCall(streamCall);
+      setCallStatus("joined");
+
+      startAgentSession(callId);
+    } catch (err) {
+      console.error("Stream call error:", err);
+      setCallStatus("error");
+    }
+  }
+
+  async function startAgentSession(callId: string) {
+    setAgentStatus("connecting");
+    try {
+      const res = await fetch("/api/agent-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId, callType: "default" }),
+      });
+      if (res.ok) {
+        const { session_id } = await res.json();
+        agentSessionRef.current = session_id ?? null;
+        setAgentStatus("connected");
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        console.error("[lesson] agent-session failed:", res.status, errBody);
+        setAgentStatus("failed");
+      }
+    } catch (err) {
+      console.error("[lesson] agent-session network error:", err);
+      setAgentStatus("failed");
+    }
+  }
+
+  function stopAgentSession(callId: string | null, sessionId: string | null) {
+    if (!callId || !sessionId) return;
+    fetch(
+      `/api/agent-session?callId=${encodeURIComponent(callId)}&sessionId=${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    ).catch(() => {});
+  }
+
+  async function handleLeave() {
+    const callId = callRef.current?.id ?? null;
+    const sessionId = agentSessionRef.current;
+    try {
+      await callRef.current?.leave();
+      clientRef.current?.disconnectUser();
+    } catch {}
+    callRef.current = null;
+    clientRef.current = null;
+    agentSessionRef.current = null;
+    stopAgentSession(callId, sessionId);
+    router.back();
+  }
 
   if (!lesson) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.neutral.background }}>
-        <View className="flex-1 items-center justify-center">
-          <Text className="body-md text-text-secondary">Lesson not found</Text>
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: colors.neutral.background }}
+      >
+        <View
+          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+        >
+          <Text
+            style={{
+              fontFamily: "Poppins-Regular",
+              fontSize: 14,
+              color: colors.neutral.textSecondary,
+            }}
+          >
+            Lesson not found
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
+
+  // Derive the visible status from call + agent state
+  const displayStatus = getDisplayStatus(callStatus, agentStatus);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleLeave}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="chevron-back" size={24} color={colors.neutral.textPrimary} />
+          <Ionicons
+            name="chevron-back"
+            size={24}
+            color={colors.neutral.textPrimary}
+          />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>AI Teacher</Text>
 
         <View style={styles.headerRight}>
           <View style={styles.timerBadge}>
-            <Ionicons name="videocam-outline" size={13} color={colors.neutral.textPrimary} />
-            <Text style={styles.timerText}>12</Text>
+            <Ionicons
+              name="headset-outline"
+              size={13}
+              color={colors.neutral.textPrimary}
+            />
+            <Text style={styles.timerText}>Audio</Text>
           </View>
           <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="notifications-outline" size={22} color={colors.neutral.textPrimary} />
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={colors.neutral.textPrimary}
+            />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Online status */}
+      {/* Agent status row */}
       <View style={styles.statusRow}>
-        <View style={styles.onlineDot} />
-        <Text style={styles.onlineText}>Online</Text>
+        <View
+          style={[styles.onlineDot, { backgroundColor: displayStatus.color }]}
+        />
+        <Text style={[styles.onlineText, { color: displayStatus.color }]}>
+          {displayStatus.label}
+        </Text>
       </View>
 
       {/* Call area */}
       <View style={styles.callArea}>
-        {/* Fox mascot */}
         <Image
           source={images.mascotWelcome}
           contentFit="contain"
-          style={styles.mascot}
+          style={[
+            styles.mascot,
+            (callStatus === "connecting" || agentStatus === "connecting") && {
+              opacity: 0.5,
+            },
+          ]}
         />
 
-        {/* Teacher response bubble */}
-        <View style={styles.responseBubble}>
-          <View style={styles.responseBubbleText}>
-            <Text style={styles.responsePrimary}>¡Muy bien!</Text>
-            <Text style={styles.responseSecondary}>That was great! 👋</Text>
+        {/* Call connecting */}
+        {callStatus === "connecting" && (
+          <View style={styles.responseBubble}>
+            <ActivityIndicator
+              size="small"
+              color={colors.primary.purple}
+              style={{ marginRight: 12 }}
+            />
+            <View style={styles.responseBubbleText}>
+              <Text style={styles.responsePrimary}>Connecting...</Text>
+              <Text style={styles.responseSecondary}>
+                Setting up your lesson
+              </Text>
+            </View>
           </View>
-          <TouchableOpacity style={styles.speakerButton}>
-            <Ionicons name="volume-medium-outline" size={20} color={colors.primary.purple} />
-          </TouchableOpacity>
-        </View>
+        )}
+
+        {/* Call joined — agent connecting */}
+        {callStatus === "joined" && agentStatus === "connecting" && (
+          <View style={styles.responseBubble}>
+            <ActivityIndicator
+              size="small"
+              color={colors.primary.purple}
+              style={{ marginRight: 12 }}
+            />
+            <View style={styles.responseBubbleText}>
+              <Text style={styles.responsePrimary}>Starting lesson...</Text>
+              <Text style={styles.responseSecondary}>
+                Your AI teacher is joining
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Call joined — agent connected */}
+        {callStatus === "joined" && agentStatus === "connected" && (
+          <View style={styles.responseBubble}>
+            <View style={styles.responseBubbleText}>
+              <Text style={styles.responsePrimary} numberOfLines={1}>
+                {lesson.aiTeacherPrompt.introMessage.split("!")[0]}!
+              </Text>
+              <Text style={styles.responseSecondary}>
+                Audio lesson in progress 🎧
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.speakerButton}>
+              <Ionicons
+                name="volume-medium-outline"
+                size={20}
+                color={colors.primary.purple}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Call joined — agent failed (best-effort; lesson can continue) */}
+        {callStatus === "joined" && agentStatus === "failed" && (
+          <View style={styles.responseBubble}>
+            <View style={styles.responseBubbleText}>
+              <Text style={styles.responsePrimary}>Agent unavailable</Text>
+              <Text style={styles.responseSecondary}>Tap to retry</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.speakerButton}
+              onPress={() =>
+                callRef.current && startAgentSession(callRef.current.id)
+              }
+            >
+              <Ionicons
+                name="refresh-outline"
+                size={20}
+                color={colors.primary.purple}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Call error */}
+        {callStatus === "error" && (
+          <View style={styles.responseBubble}>
+            <View style={styles.responseBubbleText}>
+              <Text style={styles.responsePrimary}>Connection failed</Text>
+              <Text style={styles.responseSecondary}>Tap to retry</Text>
+            </View>
+            <TouchableOpacity style={styles.speakerButton} onPress={startCall}>
+              <Ionicons
+                name="refresh-outline"
+                size={20}
+                color={colors.primary.purple}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      {/* Controls — outside the call area, on plain background */}
-      <View style={styles.controlsRow}>
-        <TouchableOpacity style={styles.controlButton}>
-          <View style={styles.controlIconCircle}>
-            <Ionicons name="videocam" size={24} color={colors.neutral.textPrimary} />
-          </View>
-          <Text style={styles.controlLabel}>Camera</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={() => setIsMicOn((v) => !v)}
-        >
-          <View style={styles.controlIconCircle}>
-            <Ionicons name={isMicOn ? "mic" : "mic-off"} size={24} color={colors.neutral.textPrimary} />
-          </View>
-          <Text style={styles.controlLabel}>Mic</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={() => setSubtitlesOn((v) => !v)}
-        >
-          <View style={[styles.controlIconCircle, !subtitlesOn && styles.controlIconCircleOff]}>
-            <Text style={styles.aaText}>Aa</Text>
-          </View>
-          <Text style={styles.controlLabel}>Subtitles</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.controlButton} onPress={() => router.back()}>
-          <View style={[styles.controlIconCircle, styles.endCallCircle]}>
-            <Ionicons name="call" size={24} color="#fff" style={{ transform: [{ rotate: "135deg" }] }} />
-          </View>
-          <Text style={styles.controlLabel}>End Call</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Controls */}
+      {callStatus === "joined" && client && call ? (
+        <StreamVideo client={client}>
+          <StreamCall call={call}>
+            <ConnectedControls onLeave={handleLeave} />
+          </StreamCall>
+        </StreamVideo>
+      ) : (
+        <DisconnectedControls callStatus={callStatus} onLeave={handleLeave} />
+      )}
 
       {/* Session feedback */}
       <View style={styles.feedbackRow}>
         <View style={styles.feedbackItem}>
           <Text style={styles.feedbackLabel}>Speaking</Text>
-          <Text style={[styles.feedbackValue, { color: colors.semantic.success }]}>Excellent</Text>
+          <Text
+            style={[styles.feedbackValue, { color: colors.semantic.success }]}
+          >
+            Excellent
+          </Text>
         </View>
         <View style={styles.feedbackDivider} />
         <View style={styles.feedbackItem}>
           <Text style={styles.feedbackLabel}>Pronunciation</Text>
-          <Text style={[styles.feedbackValue, { color: colors.primary.blue }]}>Great</Text>
+          <Text style={[styles.feedbackValue, { color: colors.primary.blue }]}>
+            Great
+          </Text>
         </View>
         <View style={styles.feedbackDivider} />
         <View style={styles.feedbackItem}>
           <Text style={styles.feedbackLabel}>Grammar</Text>
-          <Text style={[styles.feedbackValue, { color: colors.primary.purple }]}>Good</Text>
+          <Text
+            style={[styles.feedbackValue, { color: colors.primary.purple }]}
+          >
+            Good
+          </Text>
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+function getDisplayStatus(
+  callStatus: CallStatus,
+  agentStatus: AgentStatus,
+): { color: string; label: string } {
+  if (callStatus === "joined") {
+    const map: Record<AgentStatus, { color: string; label: string }> = {
+      idle: { color: colors.neutral.textSecondary, label: "Setting up..." },
+      connecting: {
+        color: colors.semantic.warning,
+        label: "Joining lesson...",
+      },
+      connected: { color: colors.semantic.success, label: "Online" },
+      failed: { color: colors.semantic.error, label: "Agent unavailable" },
+    };
+    return map[agentStatus];
+  }
+  const map: Record<CallStatus, { color: string; label: string }> = {
+    idle: { color: colors.neutral.textSecondary, label: "Starting..." },
+    connecting: { color: colors.semantic.warning, label: "Connecting..." },
+    joined: { color: colors.semantic.success, label: "Online" },
+    error: { color: colors.semantic.error, label: "Connection failed" },
+  };
+  return map[callStatus];
+}
+
+// Rendered inside StreamCall — has access to live mic state from Stream
+function ConnectedControls({ onLeave }: { onLeave: () => void }) {
+  const { useMicrophoneState } = useCallStateHooks();
+  const { microphone, isMute } = useMicrophoneState();
+  const [subtitlesOn, setSubtitlesOn] = useState(true);
+
+  return (
+    <View style={styles.controlsRow}>
+      <TouchableOpacity style={styles.controlButton}>
+        <View style={styles.controlIconCircle}>
+          <Ionicons
+            name="videocam"
+            size={24}
+            color={colors.neutral.textPrimary}
+          />
+        </View>
+        <Text style={styles.controlLabel}>Camera</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.controlButton}
+        onPress={() => microphone.toggle()}
+      >
+        <View style={[styles.controlIconCircle, isMute && styles.mutedCircle]}>
+          <Ionicons
+            name={isMute ? "mic-off" : "mic"}
+            size={24}
+            color={isMute ? colors.semantic.error : colors.neutral.textPrimary}
+          />
+        </View>
+        <Text style={styles.controlLabel}>Mic</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.controlButton}
+        onPress={() => setSubtitlesOn((v) => !v)}
+      >
+        <View
+          style={[
+            styles.controlIconCircle,
+            !subtitlesOn && styles.controlIconCircleOff,
+          ]}
+        >
+          <Text style={styles.aaText}>Aa</Text>
+        </View>
+        <Text style={styles.controlLabel}>Subtitles</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.controlButton} onPress={onLeave}>
+        <View style={[styles.controlIconCircle, styles.endCallCircle]}>
+          <Ionicons
+            name="call"
+            size={24}
+            color="#fff"
+            style={{ transform: [{ rotate: "135deg" }] }}
+          />
+        </View>
+        <Text style={styles.controlLabel}>End Call</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function DisconnectedControls({
+  callStatus,
+  onLeave,
+}: {
+  callStatus: CallStatus;
+  onLeave: () => void;
+}) {
+  const [subtitlesOn, setSubtitlesOn] = useState(true);
+  const isConnecting = callStatus === "connecting";
+
+  return (
+    <View style={styles.controlsRow}>
+      <TouchableOpacity style={styles.controlButton} disabled={isConnecting}>
+        <View style={[styles.controlIconCircle, styles.controlIconCircleOff]}>
+          <Ionicons
+            name="videocam"
+            size={24}
+            color={colors.neutral.textSecondary}
+          />
+        </View>
+        <Text style={styles.controlLabel}>Camera</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.controlButton} disabled={isConnecting}>
+        <View style={[styles.controlIconCircle, styles.controlIconCircleOff]}>
+          <Ionicons name="mic" size={24} color={colors.neutral.textSecondary} />
+        </View>
+        <Text style={styles.controlLabel}>Mic</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.controlButton}
+        onPress={() => setSubtitlesOn((v) => !v)}
+      >
+        <View
+          style={[
+            styles.controlIconCircle,
+            !subtitlesOn && styles.controlIconCircleOff,
+          ]}
+        >
+          <Text
+            style={[styles.aaText, { color: colors.neutral.textSecondary }]}
+          >
+            Aa
+          </Text>
+        </View>
+        <Text style={styles.controlLabel}>Subtitles</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.controlButton} onPress={onLeave}>
+        <View style={[styles.controlIconCircle, styles.endCallCircle]}>
+          <Ionicons
+            name="call"
+            size={24}
+            color="#fff"
+            style={{ transform: [{ rotate: "135deg" }] }}
+          />
+        </View>
+        <Text style={styles.controlLabel}>End Call</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -187,12 +586,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.semantic.success,
   },
   onlineText: {
     fontFamily: "Poppins-Medium",
     fontSize: 13,
-    color: colors.semantic.success,
   },
   callArea: {
     flex: 1,
@@ -276,6 +673,9 @@ const styles = StyleSheet.create({
   },
   controlIconCircleOff: {
     backgroundColor: colors.neutral.surface,
+  },
+  mutedCircle: {
+    backgroundColor: "#FEF2F2",
   },
   aaText: {
     fontFamily: "Poppins-SemiBold",
