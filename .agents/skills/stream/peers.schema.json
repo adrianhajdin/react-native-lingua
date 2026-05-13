@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GetStream/agent-skills/skills/stream/peers.schema.json",
+  "title": "Stream Router Peer Manifest",
+  "description": "Schema for skills/stream/peers.yaml - the manifest the Stream router consults to detect, install, and route to sibling skills in the Stream pack.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["peers"],
+  "properties": {
+    "peers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/peer" }
+    }
+  },
+  "$defs": {
+    "peer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "glob", "install", "install_policy", "purpose"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^stream(-[a-z0-9]+)+$",
+          "description": "Skill name as used by the Skill tool and the install CLI. Must be kebab-case and prefixed with 'stream-'. The router itself ('stream') is not listed here."
+        },
+        "glob": {
+          "type": "string",
+          "pattern": "^~/\\.claude/skills/stream-[a-z0-9-]+/SKILL\\.md$",
+          "description": "Absolute Glob path used to test whether the peer is installed. Always points at the peer's SKILL.md under ~/.claude/skills."
+        },
+        "install": {
+          "type": "string",
+          "pattern": "^npx skills add GetStream/agent-skills --s stream-[a-z0-9-]+ -y$",
+          "description": "Exact shell command the router runs to install the peer. -y suppresses the package CLI's own confirmation; the router enforces install_policy on top."
+        },
+        "install_policy": {
+          "type": "string",
+          "enum": ["silent", "ask"],
+          "description": "silent: install without prompting (default for first-party peers the user already opted into). ask: require explicit user confirmation before installing - reserved for large platform-specific packs the user may not want."
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 10,
+          "description": "One-sentence summary of what this peer does. Surfaced in router prose and in the install-confirm prompt for ask peers."
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Tokens that, when found in user input or in the cwd (filename, extension), indicate this peer is the right route. Platform packs only - the cli/docs/builder peers are routed via SKILL.md prose, not signal matching."
+        },
+        "fallback_on_decline": {
+          "type": "string",
+          "pattern": "^stream(-[a-z0-9]+)+$",
+          "description": "Peer to route to if the user declines an 'ask' install. Typically 'stream-docs' for read-only follow-ups. Only meaningful when install_policy is 'ask'."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "install_policy": { "const": "silent" } }
+          },
+          "then": {
+            "not": { "required": ["fallback_on_decline"] }
+          }
+        }
+      ]
+    }
+  }
+}

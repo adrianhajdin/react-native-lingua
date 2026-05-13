@@ -1,0 +1,75 @@
+# Stream router peer manifest.
+#
+# One entry per sibling skill in the Stream pack. The router (skills/stream/SKILL.md)
+# and RULES.md reference this file as the single source of truth for:
+#   - Glob path used to detect whether a peer is installed.
+#   - Install command used when a peer is missing.
+#   - Install policy: "silent" (run install with no prompt - default for first-party
+#     pack peers the user already opted into) or "ask" (require explicit user
+#     confirmation before installing - reserved for large platform-specific packs).
+#   - Routing signals (platform packs only): tokens that, when seen in user input
+#     or detected in the cwd, indicate the user wants this pack.
+#   - Fallback target when the user declines an "ask" install.
+#
+# Schema: peers.schema.json (sibling file). Validate with any JSON Schema validator
+# after converting YAML -> JSON.
+#
+# Adding a new peer pack:
+#   1. Append an entry below.
+#   2. If the pack is platform-specific, add tokens to `signals` and choose
+#      `install_policy: ask` if the pack is large or rarely useful.
+#   3. Add a "By task" bullet to skills/stream/SKILL.md if the routing prose
+#      benefits from a human-readable hint. The Pick-a-track classifier reads
+#      this file at runtime - no code change needed for routing itself.
+
+peers:
+  - name: stream-cli
+    glob: ~/.claude/skills/stream-cli/SKILL.md
+    install: npx skills add GetStream/agent-skills --s stream-cli -y
+    install_policy: silent
+    purpose: Query Stream data via CLI; run stream api / config / auth; install the Stream CLI.
+
+  - name: stream-docs
+    glob: ~/.claude/skills/stream-docs/SKILL.md
+    install: npx skills add GetStream/agent-skills --s stream-docs -y
+    install_policy: silent
+    purpose: Search live Stream SDK documentation (Chat/Video/Feeds/Moderation across React, iOS, Android, Node, Flutter, Unity).
+
+  - name: stream-builder
+    glob: ~/.claude/skills/stream-builder/SKILL.md
+    install: npx skills add GetStream/agent-skills --s stream-builder -y
+    install_policy: silent
+    purpose: Scaffold a new web (Next.js) app with Stream, or integrate Chat/Video/Feeds/Moderation into an existing one.
+
+  - name: stream-swift
+    glob: ~/.claude/skills/stream-swift/SKILL.md
+    install: npx skills add GetStream/agent-skills --s stream-swift -y
+    install_policy: ask
+    purpose: Build or integrate Stream Chat/Video/Feeds in Swift/SwiftUI/UIKit/iOS apps. Includes package setup, auth wiring, and view blueprints.
+    signals:
+      - swift
+      - swiftui
+      - uikit
+      - ios
+      - xcode
+      - .xcodeproj
+      - Package.swift
+    fallback_on_decline: stream-docs
+
+  - name: stream-react-native
+    glob: ~/.claude/skills/stream-react-native/SKILL.md
+    install: npx skills add GetStream/agent-skills --s stream-react-native -y
+    install_policy: ask
+    purpose: Create, build, or integrate Stream Chat React Native in React Native CLI and Expo apps. Includes package setup, auth wiring, and Chat UI blueprints.
+    signals:
+      - react native
+      - react-native
+      - rn cli
+      - expo
+      - expo router
+      - expo-router
+      - stream-chat-react-native
+      - stream-chat-expo
+      - chat react native
+      - stream chat rn
+    fallback_on_decline: stream-docs
