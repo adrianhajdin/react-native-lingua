@@ -15,7 +15,7 @@ export const UNITS: Unit[] = [
     title: 'Bonjour! Greetings',
     description: 'Learn how to greet and introduce yourself in French',
     order: 1,
-    lessonIds: ['fr-lesson-1', 'fr-lesson-2'],
+    lessonIds: ['fr-lesson-1', 'fr-lesson-2', 'fr-lesson-3', 'fr-lesson-4', 'fr-lesson-5'],
   },
   {
     id: 'ja-unit-1',
@@ -23,7 +23,7 @@ export const UNITS: Unit[] = [
     title: 'はじめまして — First Steps',
     description: 'Learn essential Japanese phrases for meeting people',
     order: 1,
-    lessonIds: ['ja-lesson-1', 'ja-lesson-2'],
+    lessonIds: ['ja-lesson-1', 'ja-lesson-2', 'ja-lesson-3', 'ja-lesson-4', 'ja-lesson-5'],
   },
   {
     id: 'de-unit-1',
@@ -31,6 +31,6 @@ export const UNITS: Unit[] = [
     title: 'Hallo! German Basics',
     description: 'Master everyday German greetings and introductions',
     order: 1,
-    lessonIds: ['de-lesson-1', 'de-lesson-2'],
+    lessonIds: ['de-lesson-1', 'de-lesson-2', 'de-lesson-3', 'de-lesson-4', 'de-lesson-5'],
   },
 ];
