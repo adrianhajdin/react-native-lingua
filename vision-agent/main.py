@@ -30,9 +30,17 @@ DEFAULT_SYSTEM_PROMPT = (
     "Keep your responses concise — this is an audio lesson, so speak naturally and at a comfortable pace."
 )
 
+def _require_env(var_name: str) -> None:
+    if not os.getenv(var_name):
+        raise RuntimeError(f"Missing required environment variable: {var_name}")
 
 def _language_name_from_call_id(call_id: str) -> Optional[str]:
     # call_id format: lesson-{langCode}-lesson-{n}-{userId}
+     if __name__ == "__main__":
+    _require_env("STREAM_API_KEY")
+    _require_env("STREAM_API_SECRET")
+    _require_env("OPENAI_API_KEY")
+    
     parts = call_id.split("-")
     if len(parts) >= 2 and parts[0] == "lesson":
         return LANGUAGE_NAMES.get(parts[1])

@@ -1,4 +1,5 @@
-import { useUser } from "@clerk/expo";
+import { useAuth, useUser } from "@clerk/expo";
+import { Ionicons } from "@expo/vector-icons";
 import {
   Call,
   StreamCall,
@@ -6,7 +7,6 @@ import {
   StreamVideoClient,
   useCallStateHooks,
 } from "@stream-io/video-react-native-sdk";
-import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -24,25 +24,26 @@ import { colors } from "@/constants/theme";
 import { LESSONS } from "@/data/lessons";
 import { useLanguageStore } from "@/store/languageStore";
 
-type CallStatus  = "idle" | "connecting" | "joined" | "error";
+type CallStatus = "idle" | "connecting" | "joined" | "error";
 type AgentStatus = "idle" | "connecting" | "connected" | "failed";
 
 export default function LessonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const { selectedLanguage } = useLanguageStore();
 
   const lesson = LESSONS.find((l) => l.id === id);
 
   const [client, setClient] = useState<StreamVideoClient | null>(null);
   const [call, setCall] = useState<Call | null>(null);
-  const [callStatus, setCallStatus]   = useState<CallStatus>("idle");
+  const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("idle");
 
-  const callRef          = useRef<Call | null>(null);
-  const clientRef        = useRef<StreamVideoClient | null>(null);
-  const agentSessionRef  = useRef<string | null>(null);
+  const callRef = useRef<Call | null>(null);
+  const clientRef = useRef<StreamVideoClient | null>(null);
+  const agentSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !user || !lesson) return;
@@ -53,16 +54,18 @@ export default function LessonScreen() {
       clientRef.current?.disconnectUser().catch(console.error);
       stopAgentSession(callRef.current?.id ?? null, agentSessionRef.current);
     };
-  }, [isLoaded]);
+  }, [isLoaded, user, lesson]);
 
   async function startCall() {
     if (!user || !lesson) return;
     setCallStatus("connecting");
 
     try {
-      const res = await fetch(
-        `/api/stream-token?userId=${encodeURIComponent(user.id)}`
-      );
+      const clerkToken = await getToken();
+      if (!clerkToken) throw new Error("Not authenticated");
+      const res = await fetch("/api/stream-token", {
+        headers: { Authorization: `Bearer ${clerkToken}` },
+      });
       if (!res.ok) throw new Error("Token fetch failed");
       const { token, apiKey } = await res.json();
 
@@ -87,22 +90,27 @@ export default function LessonScreen() {
       try {
         await streamCall.update({
           custom: {
-            lesson_id:     lesson.id,
-            lesson_title:  lesson.title,
+            lesson_id: lesson.id,
+            lesson_title: lesson.title,
             language,
-            goals:         lesson.goals.map((g) => g.description),
-            vocabulary:    lesson.vocabulary.map((v) => `${v.word}: ${v.translation}`),
-            phrases:       lesson.phrases.map((p) => p.text),
-            topics:        lesson.aiTeacherPrompt.topics,
+            goals: lesson.goals.map((g) => g.description),
+            vocabulary: lesson.vocabulary.map(
+              (v) => `${v.word}: ${v.translation}`,
+            ),
+            phrases: lesson.phrases.map((p) => p.text),
+            topics: lesson.aiTeacherPrompt.topics,
             system_prompt: lesson.aiTeacherPrompt.systemPrompt,
             intro_message: lesson.aiTeacherPrompt.introMessage,
           },
         });
       } catch (updateErr) {
-        console.warn("[lesson] call.update failed (agent will use default prompts):", updateErr);
+        console.warn(
+          "[lesson] call.update failed (agent will use default prompts):",
+          updateErr,
+        );
       }
 
-      callRef.current   = streamCall;
+      callRef.current = streamCall;
       clientRef.current = streamClient;
       setClient(streamClient);
       setCall(streamCall);
@@ -142,29 +150,39 @@ export default function LessonScreen() {
     if (!callId || !sessionId) return;
     fetch(
       `/api/agent-session?callId=${encodeURIComponent(callId)}&sessionId=${encodeURIComponent(sessionId)}`,
-      { method: "DELETE" }
+      { method: "DELETE" },
     ).catch(() => {});
   }
 
   async function handleLeave() {
-    const callId    = callRef.current?.id ?? null;
+    const callId = callRef.current?.id ?? null;
     const sessionId = agentSessionRef.current;
     try {
       await callRef.current?.leave();
       clientRef.current?.disconnectUser();
     } catch {}
-    callRef.current          = null;
-    clientRef.current        = null;
-    agentSessionRef.current  = null;
+    callRef.current = null;
+    clientRef.current = null;
+    agentSessionRef.current = null;
     stopAgentSession(callId, sessionId);
     router.back();
   }
 
   if (!lesson) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.neutral.background }}>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ fontFamily: "Poppins-Regular", fontSize: 14, color: colors.neutral.textSecondary }}>
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: colors.neutral.background }}
+      >
+        <View
+          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+        >
+          <Text
+            style={{
+              fontFamily: "Poppins-Regular",
+              fontSize: 14,
+              color: colors.neutral.textSecondary,
+            }}
+          >
             Lesson not found
           </Text>
         </View>
@@ -183,25 +201,39 @@ export default function LessonScreen() {
           onPress={handleLeave}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="chevron-back" size={24} color={colors.neutral.textPrimary} />
+          <Ionicons
+            name="chevron-back"
+            size={24}
+            color={colors.neutral.textPrimary}
+          />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>AI Teacher</Text>
 
         <View style={styles.headerRight}>
           <View style={styles.timerBadge}>
-            <Ionicons name="headset-outline" size={13} color={colors.neutral.textPrimary} />
+            <Ionicons
+              name="headset-outline"
+              size={13}
+              color={colors.neutral.textPrimary}
+            />
             <Text style={styles.timerText}>Audio</Text>
           </View>
           <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="notifications-outline" size={22} color={colors.neutral.textPrimary} />
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={colors.neutral.textPrimary}
+            />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Agent status row */}
       <View style={styles.statusRow}>
-        <View style={[styles.onlineDot, { backgroundColor: displayStatus.color }]} />
+        <View
+          style={[styles.onlineDot, { backgroundColor: displayStatus.color }]}
+        />
         <Text style={[styles.onlineText, { color: displayStatus.color }]}>
           {displayStatus.label}
         </Text>
@@ -214,17 +246,25 @@ export default function LessonScreen() {
           contentFit="contain"
           style={[
             styles.mascot,
-            (callStatus === "connecting" || agentStatus === "connecting") && { opacity: 0.5 },
+            (callStatus === "connecting" || agentStatus === "connecting") && {
+              opacity: 0.5,
+            },
           ]}
         />
 
         {/* Call connecting */}
         {callStatus === "connecting" && (
           <View style={styles.responseBubble}>
-            <ActivityIndicator size="small" color={colors.primary.purple} style={{ marginRight: 12 }} />
+            <ActivityIndicator
+              size="small"
+              color={colors.primary.purple}
+              style={{ marginRight: 12 }}
+            />
             <View style={styles.responseBubbleText}>
               <Text style={styles.responsePrimary}>Connecting...</Text>
-              <Text style={styles.responseSecondary}>Setting up your lesson</Text>
+              <Text style={styles.responseSecondary}>
+                Setting up your lesson
+              </Text>
             </View>
           </View>
         )}
@@ -232,10 +272,16 @@ export default function LessonScreen() {
         {/* Call joined — agent connecting */}
         {callStatus === "joined" && agentStatus === "connecting" && (
           <View style={styles.responseBubble}>
-            <ActivityIndicator size="small" color={colors.primary.purple} style={{ marginRight: 12 }} />
+            <ActivityIndicator
+              size="small"
+              color={colors.primary.purple}
+              style={{ marginRight: 12 }}
+            />
             <View style={styles.responseBubbleText}>
               <Text style={styles.responsePrimary}>Starting lesson...</Text>
-              <Text style={styles.responseSecondary}>Your AI teacher is joining</Text>
+              <Text style={styles.responseSecondary}>
+                Your AI teacher is joining
+              </Text>
             </View>
           </View>
         )}
@@ -247,10 +293,16 @@ export default function LessonScreen() {
               <Text style={styles.responsePrimary} numberOfLines={1}>
                 {lesson.aiTeacherPrompt.introMessage.split("!")[0]}!
               </Text>
-              <Text style={styles.responseSecondary}>Audio lesson in progress 🎧</Text>
+              <Text style={styles.responseSecondary}>
+                Audio lesson in progress 🎧
+              </Text>
             </View>
             <TouchableOpacity style={styles.speakerButton}>
-              <Ionicons name="volume-medium-outline" size={20} color={colors.primary.purple} />
+              <Ionicons
+                name="volume-medium-outline"
+                size={20}
+                color={colors.primary.purple}
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -264,9 +316,15 @@ export default function LessonScreen() {
             </View>
             <TouchableOpacity
               style={styles.speakerButton}
-              onPress={() => callRef.current && startAgentSession(callRef.current.id)}
+              onPress={() =>
+                callRef.current && startAgentSession(callRef.current.id)
+              }
             >
-              <Ionicons name="refresh-outline" size={20} color={colors.primary.purple} />
+              <Ionicons
+                name="refresh-outline"
+                size={20}
+                color={colors.primary.purple}
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -279,7 +337,11 @@ export default function LessonScreen() {
               <Text style={styles.responseSecondary}>Tap to retry</Text>
             </View>
             <TouchableOpacity style={styles.speakerButton} onPress={startCall}>
-              <Ionicons name="refresh-outline" size={20} color={colors.primary.purple} />
+              <Ionicons
+                name="refresh-outline"
+                size={20}
+                color={colors.primary.purple}
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -300,17 +362,27 @@ export default function LessonScreen() {
       <View style={styles.feedbackRow}>
         <View style={styles.feedbackItem}>
           <Text style={styles.feedbackLabel}>Speaking</Text>
-          <Text style={[styles.feedbackValue, { color: colors.semantic.success }]}>Excellent</Text>
+          <Text
+            style={[styles.feedbackValue, { color: colors.semantic.success }]}
+          >
+            Excellent
+          </Text>
         </View>
         <View style={styles.feedbackDivider} />
         <View style={styles.feedbackItem}>
           <Text style={styles.feedbackLabel}>Pronunciation</Text>
-          <Text style={[styles.feedbackValue, { color: colors.primary.blue }]}>Great</Text>
+          <Text style={[styles.feedbackValue, { color: colors.primary.blue }]}>
+            Great
+          </Text>
         </View>
         <View style={styles.feedbackDivider} />
         <View style={styles.feedbackItem}>
           <Text style={styles.feedbackLabel}>Grammar</Text>
-          <Text style={[styles.feedbackValue, { color: colors.primary.purple }]}>Good</Text>
+          <Text
+            style={[styles.feedbackValue, { color: colors.primary.purple }]}
+          >
+            Good
+          </Text>
         </View>
       </View>
     </SafeAreaView>
@@ -319,22 +391,25 @@ export default function LessonScreen() {
 
 function getDisplayStatus(
   callStatus: CallStatus,
-  agentStatus: AgentStatus
+  agentStatus: AgentStatus,
 ): { color: string; label: string } {
   if (callStatus === "joined") {
     const map: Record<AgentStatus, { color: string; label: string }> = {
-      idle:       { color: colors.neutral.textSecondary, label: "Setting up..." },
-      connecting: { color: colors.semantic.warning,      label: "Joining lesson..." },
-      connected:  { color: colors.semantic.success,      label: "Online" },
-      failed:     { color: colors.semantic.error,        label: "Agent unavailable" },
+      idle: { color: colors.neutral.textSecondary, label: "Setting up..." },
+      connecting: {
+        color: colors.semantic.warning,
+        label: "Joining lesson...",
+      },
+      connected: { color: colors.semantic.success, label: "Online" },
+      failed: { color: colors.semantic.error, label: "Agent unavailable" },
     };
     return map[agentStatus];
   }
   const map: Record<CallStatus, { color: string; label: string }> = {
-    idle:       { color: colors.neutral.textSecondary, label: "Starting..." },
-    connecting: { color: colors.semantic.warning,      label: "Connecting..." },
-    joined:     { color: colors.semantic.success,      label: "Online" },
-    error:      { color: colors.semantic.error,        label: "Connection failed" },
+    idle: { color: colors.neutral.textSecondary, label: "Starting..." },
+    connecting: { color: colors.semantic.warning, label: "Connecting..." },
+    joined: { color: colors.semantic.success, label: "Online" },
+    error: { color: colors.semantic.error, label: "Connection failed" },
   };
   return map[callStatus];
 }
@@ -349,7 +424,11 @@ function ConnectedControls({ onLeave }: { onLeave: () => void }) {
     <View style={styles.controlsRow}>
       <TouchableOpacity style={styles.controlButton}>
         <View style={styles.controlIconCircle}>
-          <Ionicons name="videocam" size={24} color={colors.neutral.textPrimary} />
+          <Ionicons
+            name="videocam"
+            size={24}
+            color={colors.neutral.textPrimary}
+          />
         </View>
         <Text style={styles.controlLabel}>Camera</Text>
       </TouchableOpacity>
@@ -372,7 +451,12 @@ function ConnectedControls({ onLeave }: { onLeave: () => void }) {
         style={styles.controlButton}
         onPress={() => setSubtitlesOn((v) => !v)}
       >
-        <View style={[styles.controlIconCircle, !subtitlesOn && styles.controlIconCircleOff]}>
+        <View
+          style={[
+            styles.controlIconCircle,
+            !subtitlesOn && styles.controlIconCircleOff,
+          ]}
+        >
           <Text style={styles.aaText}>Aa</Text>
         </View>
         <Text style={styles.controlLabel}>Subtitles</Text>
@@ -407,7 +491,11 @@ function DisconnectedControls({
     <View style={styles.controlsRow}>
       <TouchableOpacity style={styles.controlButton} disabled={isConnecting}>
         <View style={[styles.controlIconCircle, styles.controlIconCircleOff]}>
-          <Ionicons name="videocam" size={24} color={colors.neutral.textSecondary} />
+          <Ionicons
+            name="videocam"
+            size={24}
+            color={colors.neutral.textSecondary}
+          />
         </View>
         <Text style={styles.controlLabel}>Camera</Text>
       </TouchableOpacity>
@@ -423,8 +511,17 @@ function DisconnectedControls({
         style={styles.controlButton}
         onPress={() => setSubtitlesOn((v) => !v)}
       >
-        <View style={[styles.controlIconCircle, !subtitlesOn && styles.controlIconCircleOff]}>
-          <Text style={[styles.aaText, { color: colors.neutral.textSecondary }]}>Aa</Text>
+        <View
+          style={[
+            styles.controlIconCircle,
+            !subtitlesOn && styles.controlIconCircleOff,
+          ]}
+        >
+          <Text
+            style={[styles.aaText, { color: colors.neutral.textSecondary }]}
+          >
+            Aa
+          </Text>
         </View>
         <Text style={styles.controlLabel}>Subtitles</Text>
       </TouchableOpacity>
