@@ -1,6 +1,8 @@
 import "../global.css";
 
 import { posthog } from "@/lib/posthog";
+import { useLanguageStore } from "@/store/languageStore";
+import { useUser } from "@clerk/expo";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { useFonts } from "expo-font";
@@ -16,6 +18,21 @@ if (!publishableKey) {
 }
 
 SplashScreen.preventAutoHideAsync();
+
+function ClerkIdentifier() {
+  const { isSignedIn, user, isLoaded } = useUser();
+  const { selectedLanguage } = useLanguageStore();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !user) return;
+    posthog.identify(user.id, {
+      $set_once: { signup_date: new Date().toISOString() },
+      $set: { preferred_language: selectedLanguage ?? null },
+    });
+  }, [isLoaded, isSignedIn, user?.id, selectedLanguage]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -60,6 +77,7 @@ export default function RootLayout() {
       }}
     >
       <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+        <ClerkIdentifier />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />

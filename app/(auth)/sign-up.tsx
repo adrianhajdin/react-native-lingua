@@ -2,6 +2,7 @@ import SocialButton from "@/components/SocialButton";
 import VerificationModal from "@/components/VerificationModal";
 import { images } from "@/constants/images";
 import { posthog } from "@/lib/posthog";
+import { useLanguageStore } from "@/store/languageStore";
 import { useSignUp, useSSO } from "@clerk/expo";
 import { AntDesign, FontAwesome, Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
@@ -28,6 +29,7 @@ type SSOStrategy = "oauth_google" | "oauth_facebook" | "oauth_apple";
 export default function SignUpScreen() {
   const { signUp, errors, fetchStatus } = useSignUp();
   const { startSSOFlow } = useSSO();
+  const { selectedLanguage } = useLanguageStore();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -93,7 +95,8 @@ export default function SignUpScreen() {
       posthog.capture("sign_up_completed", { method: "password" });
       if (signUp.createdUserId) {
         posthog.identify(signUp.createdUserId, {
-          $set_once: { sign_up_date: new Date().toISOString() },
+          $set_once: { signup_date: new Date().toISOString() },
+          $set: { preferred_language: selectedLanguage ?? null },
         });
       }
       await signUp.finalize({

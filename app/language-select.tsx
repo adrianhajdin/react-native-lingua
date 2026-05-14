@@ -107,8 +107,10 @@ export default function LanguageSelectScreen() {
           activeOpacity={0.85}
           testID="language-confirm-button"
           onPress={() => {
+            const selectedLang = LANGUAGES.find((l) => l.code === selectedCode);
             posthog.capture("language_selected", {
               language_code: selectedCode,
+              language_name: selectedLang?.name ?? selectedCode,
             });
             setSelectedLanguage(selectedCode as LanguageCode);
             router.replace("/");
